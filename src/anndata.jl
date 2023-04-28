@@ -21,13 +21,13 @@ mutable struct AnnData <: AbstractAnnData
 
     uns::Dict{<:AbstractString, <:Any}
 
-    function AnnData(file::Union{HDF5.File, HDF5.Group}, backed=false, checkversion=true)
+    function AnnData(file::Union{HDF5.File, HDF5.Group, ZGroup}, backed=false, checkversion=true)
         if checkversion
             attrs = attributes(file)
             if !haskey(attrs, "encoding-type")
-                @warn "The HDF5 file was not created by muon, we can't guarantee that everything will work correctly"
+                @warn "The file was not created by muon, we can't guarantee that everything will work correctly"
             elseif attrs["encoding-type"] != "AnnData"
-                error("This HDF5 file does not appear to hold an AnnData object")
+                error("This file does not appear to hold an AnnData object")
             end
         end
 
@@ -140,10 +140,18 @@ file(ad::AnnData) = ad.file
 
 function readh5ad(filename::AbstractString; backed=false)
     filename = abspath(filename) # this gets stored in the HDF5 objects for backed datasets
-    if !backed
-        fid = h5open(filename, "r")
+    if HDF5.ishdf5(filename)
+        if !backed
+            fid = h5open(filename, "r")
+        else
+            fid = h5open(filename, "r+")
+        end
     else
-        fid = h5open(filename, "r+")
+        if !backed
+            fid = zopen(filename, "r")
+        else
+            fid = zopen(filename, "r+")
+        end
     end
     local adata
     try

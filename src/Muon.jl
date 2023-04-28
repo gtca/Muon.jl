@@ -5,6 +5,7 @@ using SparseArrays
 import LinearAlgebra: Adjoint
 
 using HDF5
+using Zarr
 using DataFrames
 using CategoricalArrays
 using StructArrays
@@ -29,7 +30,9 @@ ANNDATAVERSION = v"0.1.0"
 include("index.jl")
 include("sparsedataset.jl")
 include("transposeddataset.jl")
+include("common_io.jl")
 include("hdf5_io.jl")
+include("zarr_io.jl")
 include("alignedmapping.jl")
 include("anndata.jl")
 include("mudata.jl")
