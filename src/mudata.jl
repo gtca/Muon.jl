@@ -1,7 +1,7 @@
 abstract type AbstractMuData end
 
 mutable struct MuData <: AbstractMuData
-    file::Union{HDF5.File, Nothing}
+    file::Union{HDF5.File, ZGroup, Nothing}
     mod::Dict{String, AnnData}
 
     obs::DataFrame
@@ -18,13 +18,13 @@ mutable struct MuData <: AbstractMuData
 
     uns::Dict{<:AbstractString, <:Any}
 
-    function MuData(file::Union{HDF5.File, HDF5.Group}, backed=false, checkversion=true)
+    function MuData(file::Union{HDF5.File, HDF5.Group, ZGroup}, backed=false, checkversion=true)
         if checkversion
             attrs = attributes(file)
             if !haskey(attrs, "encoding-type")
-                @warn "The HDF5 file was not created by muon, we can't guarantee that everything will work correctly"
+                @warn "This file was not created by muon, we can't guarantee that everything will work correctly"
             elseif attrs["encoding-type"] != "MuData"
-                error("This HDF5 file does not appear to hold a MuData object")
+                error("This file does not appear to hold a MuData object")
             end
         end
 
@@ -75,7 +75,7 @@ mutable struct MuData <: AbstractMuData
         
         modattr = attributes(file["mod"])
         if haskey(modattr, "mod-order")
-            mod_order = HDF5.read_attribute(file["mod"], "mod-order")
+            mod_order = read_attribute(file["mod"], "mod-order")
             if issubset(mods, mod_order)
                 for modality in mod_order
                     mdata.mod[modality] = AnnData(file["mod"][modality], backed, checkversion)
@@ -143,17 +143,25 @@ file(mu::MuData) = mu.file
 
 function readh5mu(filename::AbstractString; backed=false)
     filename = abspath(filename) # this gets stored in the HDF5 objects for backed datasets
-    if String(read(filename, 6)) != "MuData"
-        if HDF5.ishdf5(filename)
-            @warn "The HDF5 file was not created by muon, we can't guarantee that everything will work correctly"
-        else
-            error("The file is not an HDF5 file")
+    if HDF5.ishdf5(filename)
+        if String(read(filename, 6)) != "MuData"
+            if HDF5.ishdf5(filename)
+                @warn "The HDF5 file was not created by muon, we can't guarantee that everything will work correctly"
+            else
+                error("The file is not an HDF5 file")
+            end
         end
-    end
-    if !backed
-        fid = h5open(filename, "r")
+        if !backed
+            fid = h5open(filename, "r")
+        else
+            fid = h5open(filename, "r+")
+        end
     else
-        fid = h5open(filename, "r+")
+        if !backed
+            fid = zopen(filename, "r")
+        else
+            fid = zopen(filename, "r+")
+        end
     end
     local mdata
     try

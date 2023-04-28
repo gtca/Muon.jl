@@ -44,8 +44,8 @@ HDF5.copy_object(
     dst_parent::HDF5Group,
     dst_path::AbstractString,
 ) where {T, G <: HDF5Group} = copy_object(src_obj.group, dst_parent, dst_path)
-Base.isvalid(dset::SparseDataset{G}) where {G <: HDF5Group} = isvalid(dset.group)
-Base.isvalid(dset::SparseDataset{G}) where {G <: ZGroup} = true
+Base.isvalid(dset::SparseDataset{<:HDF5Group}) = isvalid(dset.group)
+Base.isvalid(dset::SparseDataset{<:ZGroup}) = true
 
 getcolptr(dset::SparseDataset) = dset.group["indptr"]
 rowvals(dset::SparseDataset) = dset.group["indices"]
@@ -277,7 +277,7 @@ Base.eachindex(dset::SparseDataset) = CartesianIndices(size(dset))
 
 function Base.show(io::IO, dset::SparseDataset{G}) where {G <: HDF5Group}
     if isvalid(dset)
-        print(io, "Sparse HDF5 dataset: ", HDF5.name(dset.group), " (file: ", dset.file.filename, " xfer_mode: ", Tuple(x.id for x in dset.xfer), ")")
+        print(io, "Sparse ", join(size(dset), "×"), " HDF5 dataset: ", HDF5.name(dset.group), " (file: ", dset.file.filename, " xfer_mode: ", Tuple(x.id for x in dset.xfer), ")")
     else
         print(io, "Sparse HDF5 dataset: (invalid)")
     end
@@ -285,7 +285,7 @@ end
 
 function Base.show(io::IO, dset::SparseDataset{G}) where {G <: ZGroup}
     if isvalid(dset)
-        print(io, "Sparse Zarr dataset: ", dset.path, " (storage: ", dset.storage, ")")
+        print(io, "Sparse ", join(size(dset), "×"), " Zarr dataset: ", dset.path, " (storage: ", dset.storage, ")")
     else
         print(io, "Sparse Zarr dataset: (invalid)")
     end

@@ -25,7 +25,7 @@ mutable struct AnnData <: AbstractAnnData
         if checkversion
             attrs = attributes(file)
             if !haskey(attrs, "encoding-type")
-                @warn "The file was not created by muon, we can't guarantee that everything will work correctly"
+                @warn "This file was not created by muon, we can't guarantee that everything will work correctly"
             elseif attrs["encoding-type"] != "AnnData"
                 error("This file does not appear to hold an AnnData object")
             end

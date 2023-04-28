@@ -23,9 +23,11 @@ function Base.getproperty(dset::TransposedDataset{HDF5.Dataset}, s::Symbol)
     end
 end
 
-function Base.getproperty(dset::TransposedDataset{ZArray}, s::Symbol)
+function Base.getproperty(dset::TransposedDataset{<:ZArray}, s::Symbol)
     if s === :storage
         return getfield(dset, :dset).storage
+    elseif s === :path
+        return getfield(dset, :dset).path
     else
         return getfield(dset, s)
     end
@@ -37,7 +39,8 @@ HDF5.copy_object(
     dst_parent::Union{HDF5.File, HDF5.Group},
     dst_path::AbstractString,
 ) = copy_object(src_obj.dset, dst_parent, dst_path)
-HDF5.isvalid(dset::TransposedDataset) = isvalid(dset.dset)
+Base.isvalid(dset::TransposedDataset{HDF5.Dataset}) = isvalid(dset.dset)
+Base.isvalid(dset::TransposedDataset{<:ZArray}) = true
 
 Base.to_index(A::HDF5.Dataset, I::AbstractUnitRange{<:Unsigned}) =
     Base.to_index(A, UnitRange{Int}(I)) # hyperslab only supports Int indexes
@@ -51,10 +54,12 @@ HDF5.datatype(dset::TransposedDataset) = datatype(dset.dset)
 Base.read(dset::TransposedDataset) = read_matrix(dset.dset)
 
 Base.getindex(dset::TransposedDataset, i::Integer) = getindex(dset.dset, to_indices(dset, (CartesianIndices(dset)[i],)))
+
 function Base.getindex(dset::TransposedDataset, I::Vararg{<:Integer, N}) where {N}
     mat = getindex(dset.dset, reverse(I)...)
     return ndims(mat) == 1 ? mat : mat'
 end
+
 function Base.getindex(dset::TransposedDataset{G, T, N}, I...) where {G, T, N}
     @boundscheck checkbounds(dset, I...)
     I = to_indices(dset, I)
@@ -72,12 +77,12 @@ function Base.getindex(dset::TransposedDataset{G, T, N}, I...) where {G, T, N}
     return _getindex(dset, I)
 end
 
-function _getindex(dset::TransposedDataset{ZArray}, I)
+function _getindex(dset::TransposedDataset{<:ZArray}, I)
     mat = getindex(dset.dset, reverse(I)...)
     return ndims(mat) == 1 ? mat : mat'
 end
 
-function _getindex(dset::TransposedDataset{HDF5.Dataset}, I)
+function _getindex(dset::TransposedDataset{HDF5.Dataset, T, N}, I) where {T, N}
     # HDF5.Dataset doesn't support indexing with integer arrays
     vectordims = findall(x -> !(x isa AbstractRange) && x isa AbstractVector{<:Integer}, I)
     @inbounds if length(vectordims) > 0
@@ -137,7 +142,9 @@ function Base.show(io::IO, dset::TransposedDataset{HDF5.Dataset})
     if isvalid(dset)
         print(
             io,
-            "Transposed HDF5 dataset: ",
+            "Transposed ",
+            join(size(dset), "×"),
+            " HDF5 dataset: ",
             HDF5.name(dset.dset),
             " (file: ",
             dset.file.filename,
@@ -150,11 +157,13 @@ function Base.show(io::IO, dset::TransposedDataset{HDF5.Dataset})
     end
 end
 
-function Base.show(io::IO, dset::TransposedDataset{ZArray})
+function Base.show(io::IO, dset::TransposedDataset{<:ZArray})
     if isvalid(dset)
         print(
             io,
-            "Transposed Zarr dataset: ",
+            "Transposed ",
+            join(size(dset), "×"),
+            " Zarr dataset: ",
             dset.path,
             " (storage: ",
             dset.storage,
