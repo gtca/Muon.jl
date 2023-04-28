@@ -26,7 +26,7 @@ end
 MUDATAVERSION = v"0.1.0"
 ANNDATAVERSION = v"0.1.0"
 
-
+include("typedefs.jl")
 include("index.jl")
 include("sparsedataset.jl")
 include("transposeddataset.jl")

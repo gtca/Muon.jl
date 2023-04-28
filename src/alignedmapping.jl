@@ -27,28 +27,28 @@ struct AlignedMapping{T <: Tuple, K, R} <: AbstractAlignedMapping{
     end
 end
 
-mutable struct BackedAlignedMapping{T <: Tuple, R} <:
+mutable struct BackedAlignedMapping{T <: Tuple, G <: Group, R} <:
                AbstractAlignedMapping{T, String, AbstractArray{<:Number}}
     ref::R
-    d::Union{HDF5.Group, Nothing}
-    parent::Union{HDF5.File, HDF5.Group, Nothing}
+    d::Union{G, Nothing}
+    parent::Union{G, Nothing}
     path::Union{String, Nothing}
 
-    function BackedAlignedMapping{T}(r, g::HDF5.Group) where {T <: Tuple}
+    function BackedAlignedMapping{T}(r, g) where {T <: Tuple}
         for k in keys(g)
             checkdim(T, backed_matrix(g[k]), r, k)
         end
-        return new{T, typeof(r)}(r, g, nothing, nothing)
+        return new{T, typeof(g), typeof(r)}(r, g, nothing, nothing)
     end
     function BackedAlignedMapping{T}(
         r,
-        parent::Union{HDF5.File, HDF5.Group},
+        parent::Group,
         path::String,
     ) where {T <: Tuple}
         if haskey(parent, path)
             return BackedAlignedMapping{T}(r, parent[path])
         else
-            return new{T, typeof(r)}(r, nothing, parent, path)
+            return new{T, typeof(parent), typeof(r)}(r, nothing, parent, path)
         end
     end
 end
@@ -99,7 +99,7 @@ Base.sizehint!(d::AlignedMapping, n) = sizehint!(d.d, n)
 AlignedMapping{T}(r, d::AbstractDict) where {T <: Tuple} = AlignedMapping{T, keytype(d)}(r, d)
 AlignedMapping{T, K}(ref) where {T, K} = AlignedMapping{T}(ref, Dict{K, AbstractMatrix{<:Number}}())
 AlignedMapping{T, K}(ref, ::Nothing) where {T, K} = AlignedMapping{T, K}(ref)
-AlignedMapping{T}(r, d::HDF5.Group) where {T <: Tuple} =
+AlignedMapping{T}(r, d::Group) where {T <: Tuple} =
     AligedMapping{T}(ref, read_dict_of_mixed(d))
 
 Base.delete!(d::BackedAlignedMapping, k) = !isnothing(d.d) && delete_object(d.d, k)
@@ -118,16 +118,7 @@ Base.get(default::Base.Callable, d::BackedAlignedMapping, key) =
     isnothing(d.d) || !haskey(d.d, key) ? default() : backed_matrix(d.d[key])
 Base.haskey(d::BackedAlignedMapping, key) = isnothing(d.d) ? false : haskey(d.d, key)
 Base.isempty(d::BackedAlignedMapping) = isnothing(d.d) ? true : isempty(d.d)
-function Base.iterate(d::BackedAlignedMapping)
-    if isnothing(d.d)
-        return nothing
-    else
-        next = iterate(d.d)
-        return isnothing(next) ? next :
-               (hdf5_object_name(next[1]) => backed_matrix(next[1]), next[2])
-    end
-end
-function Base.iterate(d::BackedAlignedMapping, i)
+function Base.iterate(d::BackedAlignedMapping{T, G}, i=nothing) where {T, G <: Union{HDF5.File, HDF5.Group}}
     if isnothing(d.d)
         return nothing
     else
@@ -136,6 +127,15 @@ function Base.iterate(d::BackedAlignedMapping, i)
                (hdf5_object_name(next[1]) => backed_matrix(next[1]), next[2])
     end
 end
+function Base.iterate(d::BackedAlignedMapping{T, G}, i=nothing) where {T, G <: ZGroup}
+    if (isnothing(d.d))
+        return nothing
+    else
+        next = iterate(d.d, i)
+        return isnothing(next) ? next : (next[1][1] => backed_matrix(next[1][2]), next[2])
+    end
+end
+
 Base.length(d::BackedAlignedMapping) = isnothing(d.d) ? 0 : length(d.d)
 function Base.pop!(d::BackedAlignedMapping)
     if isnothing(d.d)

@@ -1,6 +1,3 @@
-Group = Union{HDF5.Group, ZGroup}
-Dataset = Union{HDF5.Dataset, ZArray}
-
 function read_dataframe(tablegroup::Group; separate_index=true, kwargs...)
     columns = read_attribute(tablegroup, "column-order")
 

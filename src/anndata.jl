@@ -1,7 +1,7 @@
 abstract type AbstractAnnData end
 
 mutable struct AnnData <: AbstractAnnData
-    file::Union{HDF5.File, HDF5.Group, Nothing}
+    file::Union{HDF5.File, HDF5.Group, ZGroup, Nothing}
 
     X::Union{AbstractMatrix{<:Number}, Nothing}
 

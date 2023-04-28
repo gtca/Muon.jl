@@ -15,5 +15,8 @@ function _datatype(::Type{Bool})
     return dtype
 end
 
-is_compound(arr::HDF5.Dataset) = HDF5.API.h5t_get_class(datatype(f)) == HDF5.API.H5T_COMPOUND
-is_bool(arr::HDF5.Dataset) = datatype(f) == _datatype(Bool)
+read_attribute(obj::Union{HDF5.Dataset, HDF5.Group, HDF5.File}, attrname::AbstractString) = HDF5.read_attribute(obj, attrname)
+attributes(obj::Union{HDF5.Dataset, HDF5.Group, HDF5.File}) = HDF5.attributes(obj)
+
+is_compound(arr::HDF5.Dataset) = HDF5.API.h5t_get_class(datatype(arr)) == HDF5.API.H5T_COMPOUND
+is_bool(arr::HDF5.Dataset) = datatype(arr) == _datatype(Bool)

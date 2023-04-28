@@ -1,17 +1,22 @@
 # a normal HDF5 dataset is not a subtype of AbstractArray, but then again HDF5.jl does not perform
 # ahead-of-time bounds checking. checkbounds() and CartesianIndices are only defined for AbstractArrays
 # and I don't want to also reimplement those
-struct SparseDataset{T} <: AbstractArray{T, 2}
-    group::HDF5.Group
+struct SparseDataset{G <: Group, T} <: AbstractArray{T, 2}
+    group::G
     csr::Bool
 
-    function SparseDataset(group::HDF5.Group)
+    function SparseDataset(group::Group)
         csr = read_attribute(group, "encoding-type")[1:3] == "csr"
-        return new{eltype(group["data"])}(group, csr)
+        if typeof(group) <: HDF5Group
+            stype = HDF5Group
+        else
+            stype = typeof(group)
+        end
+        return new{stype, eltype(group["data"])}(group, csr)
     end
 end
 
-function Base.getproperty(dset::SparseDataset, s::Symbol)
+function Base.getproperty(dset::SparseDataset{G}, s::Symbol) where {G <: HDF5Group}
     if s === :id
         return getfield(dset, :group).id
     elseif s === :file
@@ -23,19 +28,30 @@ function Base.getproperty(dset::SparseDataset, s::Symbol)
     end
 end
 
-HDF5.filename(dset::SparseDataset) = HDF5.filename(dset.group)
+function Base.getproperty(dset::SparseDataset{G}, s::Symbol) where {G <: ZGroup}
+    if s === :storage
+        return getfield(dset, :group).storage
+    elseif s === :path
+        return getfield(dset, :group).path
+    else
+        return getfield(dset, s)
+    end
+end
+
+HDF5.filename(dset::SparseDataset{G}) where {G <: HDF5Group} = HDF5.filename(dset.group)
 HDF5.copy_object(
-    src_obj::SparseDataset,
-    dst_parent::Union{HDF5.File, HDF5.Group},
+    src_obj::SparseDataset{T, G},
+    dst_parent::HDF5Group,
     dst_path::AbstractString,
-) = copy_object(src_obj.group, dst_parent, dst_path)
-HDF5.isvalid(dset::SparseDataset) = isvalid(dset.group)
+) where {T, G <: HDF5Group} = copy_object(src_obj.group, dst_parent, dst_path)
+Base.isvalid(dset::SparseDataset{G}) where {G <: HDF5Group} = isvalid(dset.group)
+Base.isvalid(dset::SparseDataset{G}) where {G <: ZGroup} = true
 
 getcolptr(dset::SparseDataset) = dset.group["indptr"]
 rowvals(dset::SparseDataset) = dset.group["indices"]
 nonzeros(dset::SparseDataset) = dset.group["data"]
 
-Base.isassigned(dset::HDF5.Dataset, i) = i <= length(dset)
+Base.isassigned(dset::Dataset, i) = i <= length(dset)
 
 Base.ndims(dset::SparseDataset) = length(attributes(dset.group)["shape"])
 Base.size(dset::SparseDataset) = Tuple(read_attribute(dset.group, "shape"))
@@ -59,7 +75,11 @@ function Base.getindex(dset::SparseDataset, i::Integer, j::Integer)
     colptr = getcolptr(dset)
     rowval = rowvals(dset)
     c1, c2 = colptr[j] + 1, colptr[j + 1]
-    rowidx = findfirst(x -> x == i - 1, rowval[c1:c2])
+    if c2 ≥ c1
+        rowidx = findfirst(x -> x == i - 1, rowval[c1:c2])
+    else
+        rowidx = nothing
+    end
     return rowidx === nothing ? eltype(dset)(0) : nonzeros(dset)[c1 + rowidx - 1]
 end
 Base.getindex(dset::SparseDataset, ::Colon, ::Colon) = read(dset)
@@ -91,16 +111,20 @@ function Base.getindex(dset::SparseDataset, I::AbstractUnitRange, J::AbstractUni
     newdata = Vector{eltype(dset)}()
     for (nc, c) in enumerate(J)
         c1, c2 = colptr[c] + 1, colptr[c + 1]
-        currrows = rows[c1:c2] .+ convert(eltype(rows), 1)
-        rowidx = findall(x -> x ∈ I, currrows)
-        newcols[nc + 1] = newcols[nc] + length(rowidx)
+        if c2 ≥ c1
+            currrows = rows[c1:c2] .+ convert(eltype(rows), 1)
+            rowidx = findall(x -> x ∈ I, currrows)
+            newcols[nc + 1] = newcols[nc] + length(rowidx)
 
-        if length(rowidx) > 0
-            currdata = data[c1:c2][rowidx]
-            currrows = currrows[rowidx]
-            sort!(rowidx, currdata, currrows)
-            append!(newrows, currrows .- convert(eltype(newrows), first(I)) .+ convert(eltype(newrows), 1))
-            append!(newdata, currdata)
+            if length(rowidx) > 0
+                currdata = data[c1:c2][rowidx]
+                currrows = currrows[rowidx]
+                sort!(rowidx, currdata, currrows)
+                append!(newrows, currrows .- convert(eltype(newrows), first(I)) .+ convert(eltype(newrows), 1))
+                append!(newdata, currdata)
+            end
+        else
+            newcols[nc + 1] = newcols[nc]
         end
     end
     mat = SparseMatrixCSC(length(I), length(J), newcols, newrows, newdata)
@@ -251,11 +275,19 @@ end
 
 Base.eachindex(dset::SparseDataset) = CartesianIndices(size(dset))
 
-function Base.show(io::IO, dset::SparseDataset)
+function Base.show(io::IO, dset::SparseDataset{G}) where {G <: HDF5Group}
     if isvalid(dset)
         print(io, "Sparse HDF5 dataset: ", HDF5.name(dset.group), " (file: ", dset.file.filename, " xfer_mode: ", Tuple(x.id for x in dset.xfer), ")")
     else
-        print(io, "Sparse HDF5 datset: (invalid)")
+        print(io, "Sparse HDF5 dataset: (invalid)")
+    end
+end
+
+function Base.show(io::IO, dset::SparseDataset{G}) where {G <: ZGroup}
+    if isvalid(dset)
+        print(io, "Sparse Zarr dataset: ", dset.path, " (storage: ", dset.storage, ")")
+    else
+        print(io, "Sparse Zarr dataset: (invalid)")
     end
 end
 

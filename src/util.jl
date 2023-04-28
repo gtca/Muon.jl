@@ -8,8 +8,8 @@ function Base.sort!(idx::AbstractArray, vals::AbstractArray...)
     end
 end
 
-backed_matrix(obj::Union{HDF5.File, HDF5.Group}) = SparseDataset(obj)
-backed_matrix(obj::HDF5.Dataset) = TransposedDataset(obj)
+backed_matrix(obj::Union{Group}) = SparseDataset(obj)
+backed_matrix(obj::Dataset) = TransposedDataset(obj)
 
 function hdf5_object_name(obj::Union{HDF5.File, HDF5.Group, HDF5.Dataset})
     name = HDF5.name(obj)

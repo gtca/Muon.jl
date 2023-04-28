@@ -3,21 +3,29 @@
 # using h5py are transposed in Julia and vice versa. To guarantee compatibility for backed files,
 # we need an additional translation layer that transposes array accesses
 
-struct TransposedDataset{T, N} <: AbstractArray{T, N}
-    dset::HDF5.Dataset
+struct TransposedDataset{G <: Dataset, T, N} <: AbstractArray{T, N}
+    dset::G
 
-    function TransposedDataset(dset::HDF5.Dataset)
-        return new{eltype(dset), ndims(dset)}(dset)
+    function TransposedDataset(dset::Dataset)
+        return new{typeof(dset), eltype(dset), ndims(dset)}(dset)
     end
 end
 
-function Base.getproperty(dset::TransposedDataset, s::Symbol)
+function Base.getproperty(dset::TransposedDataset{HDF5.Dataset}, s::Symbol)
     if s === :id
         return getfield(dset, :dset).id
     elseif s === :file
         return getfield(dset, :dset).file
     elseif s === :xfer
         return getfield(dset, :dset).xfer
+    else
+        return getfield(dset, s)
+    end
+end
+
+function Base.getproperty(dset::TransposedDataset{ZArray}, s::Symbol)
+    if s === :storage
+        return getfield(dset, :dset).storage
     else
         return getfield(dset, s)
     end
@@ -47,7 +55,7 @@ function Base.getindex(dset::TransposedDataset, I::Vararg{<:Integer, N}) where {
     mat = getindex(dset.dset, reverse(I)...)
     return ndims(mat) == 1 ? mat : mat'
 end
-function Base.getindex(dset::TransposedDataset{T, N}, I...) where {T, N}
+function Base.getindex(dset::TransposedDataset{G, T, N}, I...) where {G, T, N}
     @boundscheck checkbounds(dset, I...)
     I = to_indices(dset, I)
     emptydims = Vector{UInt8}()
@@ -61,7 +69,15 @@ function Base.getindex(dset::TransposedDataset{T, N}, I...) where {T, N}
         dims[emptydims] .= UInt8(0)
         @inbounds return Array{T, N}(undef, dims...)[I...]
     end
+    return _getindex(dset, I)
+end
 
+function _getindex(dset::TransposedDataset{ZArray}, I)
+    mat = getindex(dset.dset, reverse(I)...)
+    return ndims(mat) == 1 ? mat : mat'
+end
+
+function _getindex(dset::TransposedDataset{HDF5.Dataset}, I)
     # HDF5.Dataset doesn't support indexing with integer arrays
     vectordims = findall(x -> !(x isa AbstractRange) && x isa AbstractVector{<:Integer}, I)
     @inbounds if length(vectordims) > 0
@@ -98,6 +114,8 @@ function Base.getindex(dset::TransposedDataset{T, N}, I...) where {T, N}
         return ndims(mat) == 1 ? mat : mat'
     end
 end
+
+
 Base.setindex!(dset::TransposedDataset, v, i::Int) =
     setindex!(dset.dset, v, ndims(dset.dset) - d + 1)
 function Base.setindex!(dset::TransposedDataset, v, I::Vararg{Int, N}) where {N}
@@ -115,7 +133,7 @@ end
 
 Base.eachindex(dset::TransposedDataset) = CartesianIndices(size(dset))
 
-function Base.show(io::IO, dset::TransposedDataset)
+function Base.show(io::IO, dset::TransposedDataset{HDF5.Dataset})
     if isvalid(dset)
         print(
             io,
@@ -128,7 +146,22 @@ function Base.show(io::IO, dset::TransposedDataset)
             ")",
         )
     else
-        print(io, "Transposed HDF5 datset: (invalid)")
+        print(io, "Transposed HDF5 dataset: (invalid)")
+    end
+end
+
+function Base.show(io::IO, dset::TransposedDataset{ZArray})
+    if isvalid(dset)
+        print(
+            io,
+            "Transposed Zarr dataset: ",
+            dset.path,
+            " (storage: ",
+            dset.storage,
+            ")",
+        )
+    else
+        print(io, "Transposed Zarr datset: (invalid)")
     end
 end
 
