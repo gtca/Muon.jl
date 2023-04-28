@@ -143,29 +143,41 @@ file(mu::MuData) = mu.file
 
 function readh5mu(filename::AbstractString; backed=false)
     filename = abspath(filename) # this gets stored in the HDF5 objects for backed datasets
-    if HDF5.ishdf5(filename)
-        if String(read(filename, 6)) != "MuData"
-            if HDF5.ishdf5(filename)
-                @warn "The HDF5 file was not created by muon, we can't guarantee that everything will work correctly"
-            else
-                error("The file is not an HDF5 file")
-            end
-        end
-        if !backed
-            fid = h5open(filename, "r")
+    if String(read(filename, 6)) != "MuData"
+        if HDF5.ishdf5(filename)
+            @warn "The HDF5 file was not created by muon, we can't guarantee that everything will work correctly"
         else
-            fid = h5open(filename, "r+")
+            error("The file is not an HDF5 file")
         end
+    end
+    if !backed
+        fid = h5open(filename, "r")
     else
-        if !backed
-            fid = zopen(filename, "r")
-        else
-            fid = zopen(filename, "r+")
-        end
+        fid = h5open(filename, "r+")
     end
     local mdata
     try
         mdata = MuData(fid, backed, false)
+    catch e
+        close(fid)
+        rethrow()
+    end
+    if !backed
+        close(fid)
+    end
+    return mdata
+end
+
+function readzarrmu(filename::AbstractString; backed=false)
+    filename = abspath(filename) # this gets stored in the Zarr objects for backed datasets
+    if !backed
+        fid = zopen(filename, "r")
+    else
+        fid = zopen(filename, "r+")
+    end
+    local mdata
+    try
+        mdata = MuData(fid, backed, true)
     catch e
         close(fid)
         rethrow()

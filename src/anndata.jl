@@ -26,7 +26,7 @@ mutable struct AnnData <: AbstractAnnData
             attrs = attributes(file)
             if !haskey(attrs, "encoding-type")
                 @warn "This file was not created by muon, we can't guarantee that everything will work correctly"
-            elseif attrs["encoding-type"] != "AnnData"
+            elseif attrs["encoding-type"] != "anndata"
                 error("This file does not appear to hold an AnnData object")
             end
         end
@@ -140,22 +140,34 @@ file(ad::AnnData) = ad.file
 
 function readh5ad(filename::AbstractString; backed=false)
     filename = abspath(filename) # this gets stored in the HDF5 objects for backed datasets
-    if HDF5.ishdf5(filename)
-        if !backed
-            fid = h5open(filename, "r")
-        else
-            fid = h5open(filename, "r+")
-        end
+    if !backed
+        fid = h5open(filename, "r")
     else
-        if !backed
-            fid = zopen(filename, "r")
-        else
-            fid = zopen(filename, "r+")
-        end
+        fid = h5open(filename, "r+")
     end
     local adata
     try
         adata = AnnData(fid, backed, false)
+    catch e
+        close(fid)
+        rethrow()
+    end
+    if !backed
+        close(fid)
+    end
+    return adata
+end
+
+function readzarrad(filename::AbstractString; backed=false)
+    filename = abspath(filename)
+    if !backed
+        fid = zopen(filename, "r")
+    else
+        fid = zopen(filename, "r+")
+    end
+    local adata
+    try
+        adata = AnnData(fid, backed, true)
     catch e
         close(fid)
         rethrow()

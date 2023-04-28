@@ -13,7 +13,7 @@ import CompressHashDisplace: FrozenDict
 import OrderedCollections: OrderedDict
 using FileIO
 
-export readh5mu, readh5ad, writeh5mu, writeh5ad, isbacked, update_obs!, update_var!, update!
+export readh5mu, readh5ad, readzarrmu, readzarradwriteh5mu, writeh5ad, isbacked, update_obs!, update_var!, update!
 export AnnData, MuData
 
 import Pkg
